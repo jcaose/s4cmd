@@ -75,6 +75,7 @@ class Options:
       self.num_threads = opt.num_threads
     else:
       self.num_threads = int(os.getenv('S4CMD_NUM_THREADS', multiprocessing.cpu_count() * 4))
+    self.aws_key_name =  opt.aws_key_name if opt else "default"
 
 class Failure(RuntimeError):
   '''Exception for runtime failures'''
@@ -424,7 +425,7 @@ class S3Handler(object):
       return None
 
   @staticmethod
-  def s3_keys_from_s3cfg():
+  def s3_keys_from_s3cfg(aws_key_name):
     '''Retrieve S3 access key settings from s3cmd's config file, if present; otherwise return None.'''
     s3cfg_path = None
     try:
@@ -433,17 +434,17 @@ class S3Handler(object):
         return None
       config = ConfigParser.ConfigParser()
       config.read(s3cfg_path)
-      keys = config.get("default", "access_key"), config.get("default", "secret_key")
-      log.debug("read S3 keys from $HOME/.s3cfg file")
+      keys = config.get(aws_key_name, "access_key"), config.get(aws_key_name, "secret_key")
+      log.debug("read S3 keys from $HOME/.s3cfg file for key %s" % aws_key_name)
       return keys
     except Exception, e:
       log.info("could not read S3 keys from $HOME/.s3cfg file; skipping (%s)", e)
       return None
-      
+
   @staticmethod
-  def init_s3_keys():
+  def init_s3_keys(aws_key_name):
     '''Initialize s3 access keys from environment varialbe or s3cfg config file.'''
-    S3Handler.S3_KEYS = S3Handler.s3_keys_from_env() or S3Handler.s3_keys_from_s3cfg()
+    S3Handler.S3_KEYS = S3Handler.s3_keys_from_env() or S3Handler.s3_keys_from_s3cfg(aws_key_name)
 
   def __init__(self, opt = Options()):
     '''Constructor, connect to S3 store'''
@@ -1260,13 +1261,17 @@ if __name__ == '__main__':
   parser.add_option('--use-ssl', help = 'use SSL connection to S3', dest = 'use_ssl', action = 'store_true')
   parser.add_option('--verbose', help = 'verbose output', dest = 'verbose', action = 'store_true')
   parser.add_option('--debug', help = 'debug output', dest = 'debug', action = 'store_true')
+  parser.add_option('--debug2', help = 'debug output', dest = 'debug2', action = 'store_true')
+
+  parser.add_option('--aws-key-name', help = 'which set of access key and secret key to use from .s3cfg', action='store',
+          type='string', dest='aws_key_name', default = "default")
 
   (options, args) = parser.parse_args()
   opt = Options(options)
   initialize(opt)
 
   # Initalize keys for S3.
-  S3Handler.init_s3_keys()
+  S3Handler.init_s3_keys(opt.aws_key_name)
 
   try:
     CommandHandler(opt).run(args)
